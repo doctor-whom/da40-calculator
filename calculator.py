@@ -8,23 +8,31 @@ arms = pd.read_csv('arms.csv')
 instructors = pd.read_csv('instructors.csv')
 restrictions = pd.read_csv('restrictions.csv')
 
+#helper write to csv
+def out_csv(dataframe,fileName):
+	prompt = 'Write to file Y/N?'
+	if raw_input(prompt) == 'Y':
+		dataframe.to_csv(fileName,index = False)
+	else:
+		print dataframe
 #get instructor name, returns weight
 def get_inst_weight():
-	
-	prompt = 'Enter instructor code: '
-	
+	prompt = 'Enter instructor code or weight in pounds: '	
 	while True:
-		code = raw_input(prompt)
-		if not instructors[instructors.Code == code].empty:
-			return float(instructors[instructors.Code == code].iloc[0]['Weight'])
+		response = raw_input(prompt)
+		if not instructors[instructors.Code == response].empty:
+			return float(instructors[instructors.Code == response].iloc[0]['Weight']),response
+		try:
+			if isinstance(float(response),Number):
+				return float(response),'custom'
+		except:
+			pass
 		else:
 			print('Code not found')
 			continue
 #get student weight
 def get_stud_weight(num):
-	
 	prompt = 'Enter student ' + str(num) + ' weight in pounds: '
-	
 	while True:
 		weight = raw_input(prompt) 
 		try:
@@ -37,11 +45,9 @@ def get_stud_weight(num):
 			print('Invalid weight')
 			continue
 #get fuel load in pounds
-def get_trip_fuel():
-	
+def get_trip_fuel():	
 	max_fuel_weight = float(restrictions[restrictions.Description == 'Max Fuel'].iloc[0]['Quantity'])
 	prompt = 'Enter fuel load in pounds or \'max\' for full 240 lbs: '
-	
 	while True:
 		fuel_load = raw_input(prompt)
 		if fuel_load == 'max':
@@ -60,10 +66,8 @@ def get_trip_fuel():
 				continue
 #get baggage load in pounds:
 def bags(pos):
-	
 	max_bags = float(restrictions[restrictions.Description == pos].iloc[0]['Quantity'])
 	prompt = 'Enter ' + pos + ' baggage weight in pounds: '
-	
 	while True:
 		bag_weight = raw_input(prompt)
 		try: 
@@ -100,13 +104,11 @@ def fuel_burn_weight():
 			continue
 #perform weight and return list of aircraft, assumes 6 lbs taxi fuel 
 def weight(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube):
-
 	output_list = pd.DataFrame()
 	output_cols = ['Registration','Shaded','MTOW','TOW','MTOW - TOW']
 
 	shaded_mtow = float(restrictions[restrictions.Description == 'MZFW/MTOW shaded'].iloc[0]['Quantity'])
 	mtow = float(restrictions[restrictions.Description == 'MZFW/MTOW'].iloc[0]['Quantity'])
-
 	load = instructor_weight + student_1 + student_2 + trip_fuel + baggage_compartment + baggage_tube
 
 	for index, row in aircraft.iterrows():
@@ -119,9 +121,8 @@ def weight(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,b
 	return output_list
 #calculate CG
 def cg(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube,fuel_burn):
-
 	output_list = pd.DataFrame()
-	output_cols = ['Registration','Takeoff CG','Aft TOCG Difference', 'Forward TOCG Difference', 'Landing CG','Aft TOCG Difference', 'Forward TOCG Difference']
+	output_cols = ['Registration','TO CG','Aft TO CG Difference', 'Forward TO CG Difference', 'LDG CG','Aft LDG CG Difference', 'Forward LDG CG Difference']
 
 	front_moment = arms[arms.Label == 'Front Pax'].iloc[0]['Arm'] * (instructor_weight+student_1)
 	aft_pax_moment =  arms[arms.Label == 'Aft Pax'].iloc[0]['Arm'] * student_2
@@ -146,14 +147,12 @@ def cg(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,bagga
 		forward_cg_limit_tow = forward_cg(tow)
 		forward_cg_limit_ldgw = forward_cg(ldgw)
 		
-		if forward_cg_limit_tow <= tow_CG <= aft_cg_limit and forward_cg_limit_ldgw <= ldg_CG <= aft_cg_limit:
+ 		if forward_cg_limit_tow <= tow_CG <= aft_cg_limit and forward_cg_limit_ldgw <= ldg_CG <= aft_cg_limit:
 			output_list = output_list.append(pd.DataFrame([(row.Aircraft, tow_CG, aft_cg_limit-tow_CG, tow_CG-forward_cg_limit_tow, ldg_CG, aft_cg_limit-ldg_CG, ldg_CG-forward_cg_limit_ldgw)] ,columns=output_cols),ignore_index=True)
 
 	return output_list
-
 #calculates forward CG limit, function of total weight
 def forward_cg(weight):
-
 	forward_cg_min = float(restrictions[restrictions.Description == 'Forward CG Limit Min'].iloc[0]['Quantity'])
 	forward_cg_mtow = float(restrictions[restrictions.Description == 'Forward CG Limit MTOW'].iloc[0]['Quantity'])
 	forward_cg_mtow_shaded = float(restrictions[restrictions.Description == 'Forward CG Limit MTOW Shaded'].iloc[0]['Quantity'])
@@ -169,7 +168,7 @@ def forward_cg(weight):
 	
 	#regime 1: shaded aircraft between 2646 lbs and mtow 2535 lbs
 	slope_1 = (forward_cg_mtow_shaded - forward_cg_mtow)/(shaded_mtow - mtow)
-	if shaded_mtow >= weight > mtow:
+	if weight > mtow:
 		return forward_cg_mtow_shaded - slope_1*(shaded_mtow-weight)
 
 	#regime 2: between 2535 lbs and 2161 lbs
@@ -182,7 +181,7 @@ def forward_cg(weight):
 		return forward_cg_min
 #Find Aircraft within MTOW, if mode is weight, just weight calc, if mode cg, then both.
 def find_Aircraft():
-	instructor_weight = get_inst_weight()
+	instructor_weight, instructor_code = get_inst_weight()
 	student_1 = get_stud_weight(1)
 	student_2 = get_stud_weight(2)
 	trip_fuel = get_trip_fuel()
@@ -198,8 +197,11 @@ def find_Aircraft():
 	cg_list = cg(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube,fuel_burn)
 
 	merge = weight_list.merge(cg_list, how = 'inner', on = 'Registration')
+	spacer = '_'
+	filename_string = instructor_code + spacer + str(instructor_weight) + spacer + str(student_1)+ spacer +str(student_2)+ spacer \
+		+ str(trip_fuel) + spacer + str(fuel_burn) + spacer + str(baggage_compartment) + spacer + str(baggage_tube) +'.csv'
 
-	print merge
+	out_csv(merge,filename_string)
 
 # find_Aircraft('weight')
 find_Aircraft()
