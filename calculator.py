@@ -2,19 +2,13 @@ import pandas as pd
 from numbers import Number
 import argparse
 import sys
+from tabulate import tabulate
 
 aircraft = pd.read_csv('aircraft.csv')
 arms = pd.read_csv('arms.csv')
 instructors = pd.read_csv('instructors.csv')
 restrictions = pd.read_csv('restrictions.csv')
 
-#helper write to csv
-def out_csv(dataframe,fileName):
-	prompt = 'Write to file Y/N?'
-	if raw_input(prompt) == 'Y':
-		dataframe.to_csv(fileName,index = False)
-	else:
-		print dataframe
 #get instructor name, returns weight
 def get_inst_weight():
 	prompt = 'Enter instructor code or weight in pounds: '	
@@ -92,7 +86,7 @@ def fuel_burn_weight():
 			if isinstance(float(flight_time),Number) and float(flight_time) > 0:
 				fuel_burn_weight = float(flight_time)*fuel_rate*fuel_density
 				if fuel_burn_weight <= max_usable_fuel*fuel_density*fuel_rate:
-					return fuel_burn_weight
+					return fuel_burn_weight, flight_time
 				else:
 					print ('Fuel burn exceeds max usable fuel')
 					continue
@@ -122,7 +116,7 @@ def weight(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,b
 #calculate CG
 def cg(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube,fuel_burn):
 	output_list = pd.DataFrame()
-	output_cols = ['Registration','TO CG','Aft TO CG Difference', 'Forward TO CG Difference', 'LDG CG','Aft LDG CG Difference', 'Forward LDG CG Difference']
+	output_cols = ['Registration','TO CG','Aft TO CG Diff', 'Forward TO CG Diff', 'LDG CG','Aft LDG CG Diff', 'Forward LDG CG Diff']
 
 	front_moment = arms[arms.Label == 'Front Pax'].iloc[0]['Arm'] * (instructor_weight+student_1)
 	aft_pax_moment =  arms[arms.Label == 'Aft Pax'].iloc[0]['Arm'] * student_2
@@ -179,6 +173,20 @@ def forward_cg(weight):
 	#regime 3: less than 2161 lbs
 	if weight <= lower_limit:
 		return forward_cg_min
+
+#helper write to csv
+def write_out(df,dict):
+	prompt = 'Write to file Y/N?'
+	out_table = tabulate(df, headers='keys', tablefmt='psql', showindex=False)
+	details = str(dict)[0:len(str(dict))-55] +'\n' + str(dict)[len(str(dict))-55:]
+	out_string = out_table + '\n' + details
+	if raw_input(prompt) == 'Y':
+		out = open('out.txt','w')
+		out.write(out_string)
+		out.close() 
+	else:
+		print out_string
+
 #Find Aircraft within MTOW, if mode is weight, just weight calc, if mode cg, then both.
 def find_Aircraft():
 	instructor_weight, instructor_code = get_inst_weight()
@@ -187,7 +195,7 @@ def find_Aircraft():
 	trip_fuel = get_trip_fuel()
 	baggage_compartment = bags('Baggage Compartment')
 	baggage_tube = bags('Baggage Tube')
-	fuel_burn = fuel_burn_weight()
+	fuel_burn, flight_time = fuel_burn_weight()
 	# if mode == 'weight':
 	# 	weight(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube)
 	# if mode == 'cg':
@@ -197,11 +205,13 @@ def find_Aircraft():
 	cg_list = cg(instructor_weight,student_1,student_2,trip_fuel,baggage_compartment,baggage_tube,fuel_burn)
 
 	merge = weight_list.merge(cg_list, how = 'inner', on = 'Registration')
-	spacer = '_'
-	filename_string = instructor_code + spacer + str(instructor_weight) + spacer + str(student_1)+ spacer +str(student_2)+ spacer \
-		+ str(trip_fuel) + spacer + str(fuel_burn) + spacer + str(baggage_compartment) + spacer + str(baggage_tube) +'.csv'
 
-	out_csv(merge,filename_string)
+	metadata = {}
+	metadata['Instructor Code'] = instructor_code;  metadata['Instructor Weight'] = instructor_weight; metadata['Student 1 Weight'] = student_1;
+	metadata['Student 2 Weight'] = student_2; metadata['Trip Fuel'] = trip_fuel; metadata['Fuel Burn'] = fuel_burn; 
+	metadata['Baggage Compartment'] = baggage_compartment; metadata['Baggage Tube'] = baggage_tube; metadata['Flight Time'] = flight_time;
+
+	write_out(merge,metadata)
 
 # find_Aircraft('weight')
 find_Aircraft()
